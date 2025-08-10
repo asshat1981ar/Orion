@@ -1,0 +1,33 @@
+{
+  "name": "orion-a2a-platform",
+  "version": "1.0.0",
+  "description": "Autonomous AI Agent Orchestration System",
+  "main": "backend/index.js",
+  "scripts": {
+    "setup": "docker-compose build && npm run db:setup",
+    "start": "docker-compose up -d",
+    "stop": "docker-compose down",
+    "restart": "npm run stop && npm run start",
+    "dev": "docker-compose -f docker-compose.yml -f docker-compose.dev.yml up",
+    "logs": "docker-compose logs -f",
+    "health": "docker-compose ps",
+    "clean": "docker-compose down -v && docker system prune -f",
+    "db:setup": "docker-compose up -d neo4j redis",
+    "db:reset": "docker-compose down -v && docker volume prune -f"
+  },
+  "keywords": [
+    "ai-agents",
+    "orchestration", 
+    "mcp",
+    "neo4j",
+    "redis",
+    "websocket",
+    "autonomous"
+  ],
+  "author": "Orion Platform Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/asshat1981ar/Orion.git"
+  }
+}

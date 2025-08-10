@@ -60,3 +60,128 @@ tags
 [._]*.un~
 
 # End of https://www.toptal.com/developers/gitignore/api/go,linux,vim
+
+# ========================================
+# ORION A2A PLATFORM SPECIFIC ADDITIONS
+# ========================================
+
+# Node.js Dependencies and Build
+node_modules/
+dist/
+build/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+.eslintcache
+
+# Environment and Secrets
+.env*
+!.env.example
+*.key
+*.pem
+secrets/
+config/local.json
+
+# Database and Storage
+neo4j-data/
+redis-data/
+*.db
+*.sqlite*
+data/
+backups/
+dump.rdb
+appendonly.aof
+
+# AI/ML Models and Vectors
+*.model
+*.pkl
+*.h5
+*.pb
+models/
+weights/
+embeddings/
+vectors/
+.embeddings-cache/
+sentence-transformers/
+transformers-cache/
+
+# MCP (Model Context Protocol) Specific
+mcp-servers/*/node_modules/
+mcp-servers/*/dist/
+mcp-registry/data/
+mcp-cache/
+.mcp-state/
+
+# Ghost Graph and Knowledge Management  
+ghost-graph-data/
+knowledge-graph/backups/
+semantic-memory/cache/
+compressed-memories/
+graph-snapshots/
+*.cypher.bak
+
+# Agent Auto-Forge Generated Files
+generated-agents/
+forge-temp/
+agent-builds/
+dynamic-agents/
+auto-generated/
+
+# Orion Platform State
+orion-state/
+orchestrator-cache/
+agent-logs/
+task-results/
+collaboration-history/
+performance-metrics/
+.orion/
+
+# Docker and Container Data
+.docker/
+docker-data/
+volumes/
+registry-auth/
+
+# Logs and Debug
+logs/
+*.log
+log/
+.log/
+
+# Monitoring and Telemetry
+metrics/
+traces/
+spans/
+prometheus-data/
+grafana-data/
+telemetry/
+analytics/
+
+# Testing and Performance
+coverage/
+test-results/
+load-test-results/
+profiles/
+*.prof
+
+# Development Environment
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Archive and Backup Files
+*.backup
+*.bak
+*.old
+*.zip
+*.tar.gz
+
+# Experimental and Research
+experimental/
+prototypes/
+sandbox/
+research/
