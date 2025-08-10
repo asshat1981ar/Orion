@@ -2,12 +2,14 @@
 
 /**
  * Enhanced Orion Inter-Agent Collaboration Demonstration
- * Features realistic multi-agent orchestration with performance metrics
+ * Features realistic multi-agent orchestration with WebSocket communication
  */
+
+const { io } = require('socket.io-client');
 
 console.log('🌟 ORION A2A PLATFORM - ENHANCED COLLABORATION DEMO');
 console.log('=' .repeat(65));
-console.log('Advanced Multi-Agent Workflow Orchestration\n');
+console.log('Advanced Multi-Agent Workflow Orchestration with Real-Time Communication\n');
 
 class OrionAgent {
   constructor(id, capabilities, avgResponseTime = 1000, successRate = 0.95) {

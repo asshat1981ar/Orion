@@ -1,0 +1,533 @@
+name: 🚀 MCP Release Automation
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - master
+    paths:
+      - 'mcp-servers/**'
+      - 'backend/**'
+      - 'claude-subagent-swarm.js'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+        - 'patch'
+        - 'minor'
+        - 'major'
+      include_agents:
+        description: 'Include Claude agents in release'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  NAMESPACE: ${{ github.repository_owner }}
+
+jobs:
+  detect-changes:
+    name: 🔍 Detect MCP Changes
+    runs-on: ubuntu-latest
+    outputs:
+      mcp-servers-changed: ${{ steps.changes.outputs.mcp-servers }}
+      backend-changed: ${{ steps.changes.outputs.backend }}
+      agents-changed: ${{ steps.changes.outputs.agents }}
+      release-needed: ${{ steps.changes.outputs.any }}
+    
+    steps:
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 🔍 Detect Changes
+      uses: dorny/paths-filter@v2
+      id: changes
+      with:
+        filters: |
+          mcp-servers:
+            - 'mcp-servers/**'
+          backend:
+            - 'backend/**'
+          agents:
+            - 'claude-subagent-swarm.js'
+            - '.github/workflows/claude-ci-automation.yml'
+
+  build-mcp-servers:
+    name: 🏗️ Build MCP Servers
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.release-needed == 'true'
+    strategy:
+      matrix:
+        server:
+          - ghost-graph-sidecar
+          - agent-auto-forge  
+          - semantic-swap-memory
+    
+    steps:
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: 🏷️ Extract Metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/mcp-${{ matrix.server }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: 🔑 Login to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 🏗️ Build and Push MCP Server
+      uses: docker/build-push-action@v5
+      with:
+        context: ./mcp-servers/${{ matrix.server }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  build-orchestrator:
+    name: 🎛️ Build Orchestrator
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend-changed == 'true'
+    
+    steps:
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: 🏷️ Extract Metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/orion-orchestrator
+        tags: |
+          type=ref,event=branch
+          type=semver,pattern={{version}}
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: 🔑 Login to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 🏗️ Build and Push Orchestrator
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+  package-claude-agents:
+    name: 🤖 Package Claude Agents
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.agents-changed == 'true' || github.event.inputs.include_agents == 'true'
+    
+    steps:
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: 📦 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: 📦 Package Claude Agent Swarm
+      run: |
+        echo "📦 Packaging Claude Agent Swarm for distribution..."
+        
+        # Create distribution package
+        mkdir -p dist/claude-agents
+        
+        # Copy core files
+        cp claude-subagent-swarm.js dist/claude-agents/
+        cp package.json dist/claude-agents/
+        cp README.md dist/claude-agents/
+        
+        # Create specialized package.json for agents
+        cat > dist/claude-agents/package.json << EOF
+        {
+          "name": "orion-claude-agents",
+          "version": "1.0.0",
+          "description": "20 Specialized Claude Sub-Agents for Autonomous Collaboration",
+          "main": "claude-subagent-swarm.js",
+          "scripts": {
+            "start": "node claude-subagent-swarm.js",
+            "agents": "node claude-subagent-swarm.js"
+          },
+          "dependencies": {
+            "socket.io-client": "^4.8.1"
+          },
+          "keywords": [
+            "claude",
+            "ai-agents",
+            "collaboration",
+            "websocket",
+            "orion"
+          ],
+          "author": "Orion Platform",
+          "license": "MIT"
+        }
+        EOF
+        
+        # Create agent documentation
+        cat > dist/claude-agents/AGENTS.md << 'EOF'
+        # Claude Sub-Agent Swarm
+        
+        ## 🤖 Available Agents
+        
+        This package contains 20 specialized Claude-powered agents:
+        
+        ### 🏗️ Architecture & Design
+        - **claude-architect-alpha**: System architecture and design patterns
+        - **claude-ux-researcher**: User experience research and design
+        - **claude-integration-specialist**: Systems integration and APIs
+        
+        ### 🔒 Security & Compliance  
+        - **claude-security-sentinel**: Security analysis and vulnerability assessment
+        - **claude-compliance-auditor**: Regulatory compliance and auditing
+        
+        ### ⚡ Performance & Optimization
+        - **claude-performance-optimizer**: System performance analysis
+        - **claude-database-expert**: Database optimization and design
+        - **claude-network-engineer**: Network architecture and optimization
+        
+        ### 💻 Development Specialists
+        - **claude-frontend-artisan**: Frontend development and optimization
+        - **claude-backend-engineer**: Backend services and APIs
+        - **claude-mobile-specialist**: Mobile app development
+        - **claude-quality-guardian**: Quality assurance and testing
+        
+        ### 🚀 DevOps & Infrastructure
+        - **claude-devops-master**: CI/CD and deployment automation  
+        - **claude-cloud-architect**: Cloud infrastructure design
+        - **claude-automation-engineer**: Process automation
+        
+        ### 🧠 Data & AI
+        - **claude-data-scientist**: Data analysis and machine learning
+        - **claude-ai-researcher**: AI/ML research and implementation
+        
+        ### 🔗 Emerging Technologies
+        - **claude-blockchain-developer**: Blockchain and Web3 development
+        - **claude-innovation-catalyst**: Technology innovation and R&D
+        
+        ### 📈 Strategy & Product
+        - **claude-product-strategist**: Product strategy and planning
+        
+        ## 🚀 Usage
+        
+        ```bash
+        npm install
+        node claude-subagent-swarm.js
+        ```
+        
+        ## 🔗 Connection
+        
+        Agents connect to Orion Orchestrator at `ws://localhost:3002` by default.
+        Configure the orchestrator URL in your environment.
+        EOF
+        
+        # Create version info
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist/claude-agents/VERSION
+        echo "${{ github.sha }}" >> dist/claude-agents/VERSION
+
+    - name: 📁 Create Release Archive
+      run: |
+        cd dist
+        tar -czf claude-agents.tar.gz claude-agents/
+        zip -r claude-agents.zip claude-agents/
+
+    - name: 📤 Upload Agent Package Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: claude-agents-package
+        path: |
+          dist/claude-agents.tar.gz
+          dist/claude-agents.zip
+        retention-days: 90
+
+  create-release:
+    name: 🎉 Create Release
+    runs-on: ubuntu-latest
+    needs: [detect-changes, build-mcp-servers, build-orchestrator, package-claude-agents]
+    if: always() && needs.detect-changes.outputs.release-needed == 'true'
+    
+    steps:
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 📋 Generate Release Notes
+      id: release-notes
+      run: |
+        cat > release_notes_generator.py << 'EOF'
+        import subprocess
+        import json
+        from datetime import datetime
+
+        def get_commits_since_last_tag():
+            try:
+                # Get last tag
+                last_tag = subprocess.check_output(['git', 'describe', '--tags', '--abbrev=0'], stderr=subprocess.DEVNULL).decode().strip()
+                # Get commits since last tag
+                commits = subprocess.check_output(['git', 'log', f'{last_tag}..HEAD', '--oneline']).decode().strip()
+            except:
+                # If no tags exist, get all commits
+                commits = subprocess.check_output(['git', 'log', '--oneline', '-10']).decode().strip()
+            
+            return commits.split('\n') if commits else []
+
+        def categorize_commits(commits):
+            categories = {
+                'features': [],
+                'fixes': [], 
+                'improvements': [],
+                'docs': [],
+                'other': []
+            }
+            
+            for commit in commits:
+                if not commit:
+                    continue
+                    
+                lower_commit = commit.lower()
+                if any(word in lower_commit for word in ['feat:', 'feature:', 'add:']):
+                    categories['features'].append(commit)
+                elif any(word in lower_commit for word in ['fix:', 'bug:', 'patch:']):
+                    categories['fixes'].append(commit)
+                elif any(word in lower_commit for word in ['improve:', 'enhance:', 'update:', 'upgrade:']):
+                    categories['improvements'].append(commit)
+                elif any(word in lower_commit for word in ['docs:', 'doc:', 'readme:']):
+                    categories['docs'].append(commit)
+                else:
+                    categories['other'].append(commit)
+            
+            return categories
+
+        def generate_release_notes():
+            commits = get_commits_since_last_tag()
+            categories = categorize_commits(commits)
+            
+            release_notes = f"""# 🚀 Orion A2A Platform Release
+
+        **Release Date:** {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
+        **Commit SHA:** ${{{{ github.sha }}}}
+        
+        ## 🎯 What's New
+        
+        This release includes updates to the Orion AI Agent orchestration platform with enhanced Claude sub-agent capabilities and improved MCP server functionality.
+        
+        """
+            
+            if categories['features']:
+                release_notes += "## ✨ New Features\n\n"
+                for commit in categories['features'][:5]:  # Limit to 5 most recent
+                    release_notes += f"- {commit}\n"
+                release_notes += "\n"
+            
+            if categories['improvements']:
+                release_notes += "## 🔧 Improvements\n\n"
+                for commit in categories['improvements'][:5]:
+                    release_notes += f"- {commit}\n"
+                release_notes += "\n"
+            
+            if categories['fixes']:
+                release_notes += "## 🐛 Bug Fixes\n\n"
+                for commit in categories['fixes'][:5]:
+                    release_notes += f"- {commit}\n"
+                release_notes += "\n"
+            
+            release_notes += """## 🤖 Claude Agent Swarm
+        
+        - 20 specialized Claude-powered sub-agents
+        - Real-time WebSocket orchestration
+        - Advanced collaboration protocols
+        - Performance monitoring and metrics
+        
+        ## 🐳 Docker Images
+        
+        **Orchestrator:**
+        ```bash
+        docker pull ghcr.io/${{ github.repository_owner }}/orion-orchestrator:latest
+        ```
+        
+        **MCP Servers:**
+        ```bash
+        docker pull ghcr.io/${{ github.repository_owner }}/mcp-ghost-graph-sidecar:latest
+        docker pull ghcr.io/${{ github.repository_owner }}/mcp-agent-auto-forge:latest  
+        docker pull ghcr.io/${{ github.repository_owner }}/mcp-semantic-swap-memory:latest
+        ```
+        
+        ## 📦 Claude Agents Package
+        
+        Download the Claude agent swarm package from the release assets:
+        - `claude-agents.tar.gz` - Unix/Linux/macOS
+        - `claude-agents.zip` - Windows
+        
+        ## 🚀 Quick Start
+        
+        ```bash
+        # Start with Docker Compose
+        docker-compose up -d
+        
+        # Or run agents standalone
+        npm install
+        node claude-subagent-swarm.js
+        ```
+        
+        ## 📊 System Requirements
+        
+        - Node.js 18+
+        - Docker & Docker Compose
+        - 4GB+ RAM (for full agent swarm)
+        - WebSocket support
+        
+        ## 🔗 Resources
+        
+        - [Documentation](https://github.com/${{ github.repository }}/blob/master/README.md)
+        - [Claude Agent Guide](https://github.com/${{ github.repository }}/blob/master/CLAUDE.md)
+        - [MCP Integration](https://github.com/${{ github.repository }}/tree/master/mcp-servers)
+        
+        ---
+        
+        **Full Changelog:** [View all changes](https://github.com/${{ github.repository }}/compare/...main)
+        """
+            
+            return release_notes
+
+        # Generate and save release notes
+        notes = generate_release_notes()
+        with open('RELEASE_NOTES.md', 'w') as f:
+            f.write(notes)
+        
+        print("✅ Release notes generated successfully!")
+        EOF
+
+        python3 release_notes_generator.py
+        
+        # Set output for use in release creation
+        {
+          echo 'release-notes<<EOF'
+          cat RELEASE_NOTES.md
+          echo EOF
+        } >> $GITHUB_OUTPUT
+
+    - name: 📥 Download Agent Package
+      uses: actions/download-artifact@v4
+      with:
+        name: claude-agents-package
+        path: ./artifacts/
+
+    - name: 🏷️ Generate Version Tag
+      id: version
+      run: |
+        if [ "${{ github.event.inputs.release_type }}" != "" ]; then
+          RELEASE_TYPE="${{ github.event.inputs.release_type }}"
+        else
+          RELEASE_TYPE="patch"
+        fi
+        
+        # Get current version or start with v1.0.0
+        CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+        echo "Current version: $CURRENT_VERSION"
+        
+        # Extract version numbers
+        VERSION_NUMBER=${CURRENT_VERSION#v}
+        IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUMBER"
+        
+        # Increment based on release type
+        case $RELEASE_TYPE in
+          "major")
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            ;;
+          "minor") 
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            ;;
+          "patch"|*)
+            PATCH=$((PATCH + 1))
+            ;;
+        esac
+        
+        NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+        echo "New version: $NEW_VERSION"
+        echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+    - name: 🎉 Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        release_name: "Orion A2A Platform ${{ steps.version.outputs.version }}"
+        body: ${{ steps.release-notes.outputs.release-notes }}
+        draft: false
+        prerelease: false
+
+    - name: 📤 Upload Claude Agents (tar.gz)
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create-release.outputs.upload_url }}
+        asset_path: ./artifacts/claude-agents.tar.gz
+        asset_name: claude-agents.tar.gz
+        asset_content_type: application/gzip
+
+    - name: 📤 Upload Claude Agents (zip)
+      uses: actions/upload-release-asset@v1  
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create-release.outputs.upload_url }}
+        asset_path: ./artifacts/claude-agents.zip
+        asset_name: claude-agents.zip
+        asset_content_type: application/zip
+
+  notify-deployment:
+    name: 🔔 Deployment Notification
+    runs-on: ubuntu-latest
+    needs: [create-release]
+    if: success()
+    
+    steps:
+    - name: 🎉 Success Notification
+      run: |
+        echo "🎉 ORION MCP RELEASE COMPLETE!"
+        echo "✅ Docker images pushed to GitHub Container Registry"
+        echo "📦 Claude agent packages created and attached to release" 
+        echo "🚀 Platform ready for deployment"
+        echo ""
+        echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/latest"
+        echo "🐳 Container Registry: ghcr.io/${{ github.repository_owner }}/"
